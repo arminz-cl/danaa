@@ -1,42 +1,48 @@
 import os
 import asyncio
+import logging
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 from datetime import datetime
 from dotenv import load_dotenv
+from src.ai_service import get_ai_answer
 
-# Ensure environment variables are loaded from .env
+# Load environment variables
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+logger = logging.getLogger(__name__)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Echoes back the user's message in Farsi with a disclaimer.
-    The answer itself doesn't include the timestamp, but the disclaimer does.
+    Passes the user's message to Groq and replies with the AI-generated answer.
     """
     if not update or not update.message:
         return
 
     chat_id = update.message.chat_id
     user_text = update.message.text
+    user_name = update.message.from_user.username or "Unknown"
     
-    # Accuracy disclaimer in Farsi (Rule 3 in doc/RULES.md)
-    # The timestamp is included here in the disclaimer section.
+    logger.info(f"Received message from @{user_name} ({chat_id}): {user_text}")
+
+    # Send a 'typing' status while AI generates the answer
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
+    # Call AI Service
+    ai_response = await get_ai_answer(user_text)
+    
+    logger.info(f"AI Response to @{user_name}: {ai_response[:100]}...")
+
+    # Accuracy disclaimer in Farsi (as per doc/RULES.md)
     disclaimer = (
         "\n\n---\n"
-        "⚠️ *سلب مسئولیت:* اطلاعات بر اساس تاریخچه گروه‌ها ارائه شده و توصیه حقوقی یا حرفه‌ای نیست. "
+        "⚠️ *سلب مسئولیت:* اطلاعات بر اساس دانش عمومی هوش مصنوعی ارائه شده و توصیه حقوقی یا حرفه‌ای نیست. "
         "لطفاً صحت اطلاعات را از منابع رسمی بررسی کنید زیرا ممکن است اطلاعات قدیمی یا نادرست باشد.\n"
         f"📅 *زمان پاسخ:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
 
-    response_text = (
-        f"سلام! من **دانا** هستم. 🇮🇷🇨🇦\n\n"
-        f"شما پرسیدید: «{user_text}»\n\n"
-        "در حال حاضر من در فاز ۱ (پایه) هستم. "
-        "به زودی می‌توانم در تاریخچه گروه‌ها جستجو کنم و پاسخ شما را پیدا کنم!"
-        f"{disclaimer}"
-    )
+    response_text = f"{ai_response}{disclaimer}"
 
     await context.bot.send_message(
         chat_id=chat_id,
@@ -47,17 +53,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Starts the bot using Polling."""
     if not TOKEN:
-        print("Error: TELEGRAM_BOT_TOKEN not found in .env file.")
+        logger.error("TELEGRAM_BOT_TOKEN not found in .env file.")
         return
 
-    print("Danaa Bot is starting... (Polling mode)")
+    logger.info("Initializing Danaa Bot application...")
     application = ApplicationBuilder().token(TOKEN).build()
     
     # Add a handler for all text messages
     text_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
     application.add_handler(text_handler)
     
+    logger.info("Bot is starting polling...")
     application.run_polling()
-
-if __name__ == "__main__":
-    main()
