@@ -24,8 +24,9 @@ These rules govern all technical and operational aspects of the Danaa project.
 - **Minimalist Approach:** Do not add a database until the "Simple Search" phase requires persistence beyond a static file.
 - **AI Selection:** Prefer "Free Tier" or "Pay-as-you-go" AI APIs with the lowest possible cost-per-token.
 
-## 3. Implementation Workflow
+## 4. Implementation Workflow
 - **Plan Before Act:** For every major task, a short written plan must be reviewed and approved.
+- **Git Protocol:** NEVER `git commit` or `git push` changes unless explicitly requested by the user.
 - **Gradual Complexity:** Each phase must be functional and testable before moving to the next.
 - **Testing:** Every new feature should include automated tests to verify its core logic.
 
