@@ -1,0 +1,16 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Circular Frame -->
+  <circle cx="100" cy="100" r="90" fill="none" stroke="#222831" stroke-width="2" stroke-dasharray="4,4"/>
+  
+  <!-- Stylized Scholar Head (Minimalist Lines) -->
+  <path d="M70 70 Q100 40 130 70" fill="none" stroke="#D80621" stroke-width="4" stroke-linecap="round"/> <!-- Turban/Head top -->
+  <path d="M75 80 Q100 70 125 80" fill="none" stroke="#222831" stroke-width="3" stroke-linecap="round"/> <!-- Eyes/Brow line -->
+  <path d="M100 85 L100 110" fill="none" stroke="#222831" stroke-width="2" stroke-linecap="round"/> <!-- Nose -->
+  
+  <!-- The Beard (The symbol of wisdom) -->
+  <path d="M70 100 Q70 160 100 175 Q130 160 130 100" fill="none" stroke="#00ADB5" stroke-width="5" stroke-linecap="round"/>
+  <path d="M85 110 Q100 140 115 110" fill="none" stroke="#00ADB5" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- Modern Geometric Accent -->
+  <rect x="95" y="165" width="10" height="10" fill="#D80621" transform="rotate(45 100 170)"/>
+</svg>

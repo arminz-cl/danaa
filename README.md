@@ -1,4 +1,4 @@
-# Danaa (دانـا) 🇨🇦🇮🇷
+# <img src="assets/logo.svg" width="80" height="80" align="center"> Danaa (دانـا) 🇨🇦🇮🇷
 
 **Danaa** is an AI-powered Telegram bot designed to assist Iranian immigrants in Canada. It leverages community knowledge to provide context-aware, privacy-conscious information about life and immigration in Canada.
 
