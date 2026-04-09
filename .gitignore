@@ -1,0 +1,14 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.vscode/
+.idea/
+venv/
+.venv/
+node_modules/
+dist/
+build/
+*.log
+data/
+!data/.gitkeep
