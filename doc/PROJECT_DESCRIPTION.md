@@ -3,6 +3,8 @@
 ## Overview
 **Danaa** is an AI-powered Telegram bot designed to assist Iranian immigrants in Canada. It leverages the historical knowledge captured in popular Telegram groups to provide accurate, context-aware answers to questions about immigration, legal procedures, insurance, and financial systems.
 
+**Primary Language:** The bot operates primarily in **Farsi (Persian)**, though support for other languages may be added in the future.
+
 ## Core Problem
 Iranian immigrants frequently ask the same questions in large Telegram groups. While the information exists in the group history, it is:
 1.  **Hard to Search:** Telegram's native search is limited and doesn't understand context.
