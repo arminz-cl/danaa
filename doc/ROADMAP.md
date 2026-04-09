@@ -10,30 +10,24 @@ This roadmap follows a "gradual implementation" approach, starting with minimal 
 - [ ] Configure the webhook and deploy (e.g., local server with ngrok or AWS).
 - [ ] **Outcome:** A bot that says "Hello, I'm Danaa!" and echoes back questions.
 
-## Phase 2: Knowledge Collection (Data Ingestion)
+## Phase 2: AI Integration (General Knowledge) [NEXT]
+**Goal:** Connect the bot to an AI model to answer general questions.
+- [ ] Research and select a cheap/free AI API (OpenAI, Anthropic, or HuggingFace).
+- [ ] Implement the AI service to process user questions.
+- [ ] Update the bot to respond using the AI's general knowledge.
+- [ ] **Outcome:** A bot that can answer general questions about Canada/Immigration.
+
+## Phase 3: Knowledge Collection (Data Ingestion)
 **Goal:** Prepare the community-provided history for processing.
 - [ ] Develop a script to ingest Telegram history (JSON/CSV export).
 - [ ] Clean and structure the data (remove PII, handle duplicate questions).
-- [ ] **Outcome:** A structured "offline" knowledge base (e.g., a large JSON file or simple local database).
+- [ ] **Outcome:** A structured "offline" knowledge base.
 
-## Phase 3: Simple Search (No AI)
-**Goal:** Implement basic search functionality.
-- [ ] Create a simple keyword or fuzzy-search mechanism.
-- [ ] Respond with the most relevant historical question/answer found in Phase 2.
-- [ ] **Outcome:** A bot that can provide "exact match" answers from history.
-
-## Phase 4: Database Integration
-**Goal:** Store knowledge and user interactions.
-- [ ] Set up a cheap database (e.g., AWS DynamoDB or RDS).
-- [ ] Store processed history and conversation logs.
-- [ ] **Outcome:** A persistent knowledge base that is easy to query and scale.
-
-## Phase 5: AI-Powered Intelligence (RAG)
-**Goal:** Use AI to synthesize answers from multiple historical sources.
-- [ ] Integrate a cheap/free AI API (e.g., OpenAI, Anthropic, or HuggingFace).
+## Phase 4: Context Aware Intelligence (RAG)
+**Goal:** Combine AI with community history for context-aware answers.
 - [ ] Implement Retrieval-Augmented Generation (RAG).
 - [ ] Ensure answers include citations (links/timestamps to original sources).
-- [ ] **Outcome:** A sophisticated bot that generates human-like, referenced answers.
+- [ ] **Outcome:** A sophisticated bot that synthesizes human-like, referenced answers from history.
 
 ## Phase 6: Conversation & Refinement
 **Goal:** Allow for multi-turn discussions and feedback loops.
