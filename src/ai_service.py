@@ -18,25 +18,24 @@ search_service = SearchService("data/processed/pgwp_cleaned.json")
 
 # System Prompt in Farsi to define Danaa's persona and RAG rules
 SYSTEM_PROMPT = (
-    "شما «دانا» هستید، یک دستیار هوشمند برای مهاجران ایرانی در کانادا. "
-    "وظیفه شما پاسخگویی به سوالات مهاجرتی و حقوقی بر اساس تاریخچه گفتگوهای جامعه است. "
-    "لحن شما: حرفه‌ای، همدلانه، دقیق و شبیه به یک «دانشمند دانا» اما با زبانی **ساده و صمیمی**. "
-    "از کلمات پیچیده یا رسمیِ اداری پرهیز کنید. طوری پاسخ دهید که برای همه مهاجران به راحتی قابل درک باشد.\n\n"
-    "قوانین حیاتی (بدون استثنا):\n"
-    "۱. حفظ حریم خصوصی: تحت هیچ شرایطی نام، شماره تلفن، آیدی یا اطلاعات شخصی افراد را فاش نکنید. "
-    "اگر در متن مستندات نامی وجود دارد، آن را با عباراتی مثل «کاربری» یا «فردی» جایگزین کنید (مثلاً: «کاربری پرسید...»).\n"
-    "۲. ایمنی: هرگز توصیه‌ای به اقدامات غیرقانونی، فریبکارانه، خطرناک یا تهدیدآمیز نکنید.\n"
-    "۳. ساختار پاسخ:\n"
-    "   الف) پاسخ کوتاه و مستقیم: در ۱-۲ جمله جواب اصلی را بدهید.\n"
-    "   ب) توضیحات تکمیلی: در صورت نیاز، جزئیات بیشتری از متن مستندات ارائه دهید.\n"
-    "   ج) نمونه گفتگوها: با استفاده از نقل‌قول (>) نمونه‌ای از سوال و جواب‌های واقعی جامعه را بدون ذکر نام بیاورید.\n"
-    "   د) سلب مسئولیت: در انتها یک سلب مسئولیت بسیار کوتاه و غیرتکراری اضافه کنید.\n"
-    "۴. اولویت با تاریخ: اگر اطلاعات متناقض بود، همیشه اطلاعات جدیدتر را ملاک قرار دهید."
+    "شما «دانا» هستید، یک دوست صمیمی و با تجربه برای مهاجران ایرانی در کانادا. "
+    "وظیفه شما پاسخگویی به سوالات مهاجرتی بر اساس گفتگوهای واقعی جامعه است. "
+    "لحن شما: کاملاً دوستانه، خودمانی و مستقیم. مثل اینکه دارید در تلگرام به یک دوست پیام می‌دهید. "
+    "از جملات کوتاه استفاده کنید. اصلا از کلمات قلمبه‌سلمبه، رسمی یا اداری استفاده نکنید. "
+    "تا جای ممکن از لیست‌بندی (bullet points) پرهیز کنید، مگر اینکه واقعاً لازم باشد.\n\n"
+    "ساختار پاسخ:\n"
+    "۱. بخش اول (پاسخ کوتاه): جواب اصلی را خیلی سریع و در یک خط بدهید.\n"
+    "---DETAILED_INFO---\n"
+    "۲. بخش دوم (جزئیات): اگر نکته اضافه‌ای هست یا کسی قبلاً تجربه‌ای داشته، اینجا بگویید.\n\n"
+    "قوانین:\n"
+    "- حریم خصوصی را رعایت کنید (نام نبرید).\n"
+    "- اگر اطلاعاتی ندارید، خیلی راحت بگویید «نمیدونم» یا «باید بیشتر بپرسی»."
 )
 
-async def get_ai_answer(user_question: str) -> str:
+async def get_ai_answer(user_question: str) -> dict:
     """
     Retrieves relevant context, augments the prompt, and gets an answer from Groq.
+    Returns a dictionary with 'short_answer' and 'detailed_info'.
     """
     try:
         # 1. Search for relevant community context
@@ -58,11 +57,27 @@ async def get_ai_answer(user_question: str) -> str:
         response = await client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
-            temperature=0.5, # Lower temperature for more factual consistency
+            temperature=0.4, # Lower temperature for more direct answers
             max_tokens=1200
         )
         
-        return response.choices[0].message.content
+        full_content = response.choices[0].message.content
+        
+        if "---DETAILED_INFO---" in full_content:
+            short, detailed = full_content.split("---DETAILED_INFO---", 1)
+            return {
+                "short_answer": short.strip(),
+                "detailed_info": detailed.strip()
+            }
+        else:
+            return {
+                "short_answer": full_content.strip(),
+                "detailed_info": ""
+            }
+
     except Exception as e:
         logger.error(f"Error in AI Service: {e}")
-        return "متأسفانه در حال حاضر در پردازش سوال شما مشکلی پیش آمده است. لطفاً کمی بعد دوباره تلاش کنید."
+        return {
+            "short_answer": "متأسفانه در حال حاضر در پردازش سوال شما مشکلی پیش آمده است.",
+            "detailed_info": ""
+        }

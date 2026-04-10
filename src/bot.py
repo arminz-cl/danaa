@@ -1,8 +1,8 @@
 import os
 import asyncio
 import logging
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 from datetime import datetime
 from dotenv import load_dotenv
 from src.ai_service import get_ai_answer
@@ -30,25 +30,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     # Call AI Service
-    ai_response = await get_ai_answer(user_text)
-    
-    logger.info(f"AI Response to @{user_name}: {ai_response[:100]}...")
+    ai_response_dict = await get_ai_answer(user_text)
+    short_answer = ai_response_dict.get("short_answer", "")
+    detailed_info = ai_response_dict.get("detailed_info", "")
 
-    # Accuracy disclaimer in Farsi (as per doc/RULES.md)
+    # Store detailed info in user_data to retrieve later on button click
+    # Use message_id as key to distinguish between different queries
+    if not context.user_data:
+        context.user_data["details"] = {}
+    
+    # Simplified disclaimer in Farsi (integrated timestamp)
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
     disclaimer = (
         "\n\n---\n"
-        "⚠️ *سلب مسئولیت:* اطلاعات بر اساس دانش عمومی هوش مصنوعی ارائه شده و توصیه حقوقی یا حرفه‌ای نیست. "
-        "لطفاً صحت اطلاعات را از منابع رسمی بررسی کنید زیرا ممکن است اطلاعات قدیمی یا نادرست باشد.\n"
-        f"📅 *زمان پاسخ:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        f"⚠️ این پاسخ بر اساس دانش عمومی در {timestamp} است، توصیه تخصصی نیست و ممکن است اشتباه باشد."
     )
 
-    response_text = f"{ai_response}{disclaimer}"
+    response_text = f"{short_answer}{disclaimer}"
+
+    # Only show the button if there is detailed info
+    reply_markup = None
+    if detailed_info:
+        keyboard = [[InlineKeyboardButton("بیشتر بدانید 🔍", callback_data="show_more")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        # We'll use a temporary storage for the last detailed info
+        # In a real app, you'd want a more robust way to map this
+        context.user_data["last_detail"] = detailed_info
 
     await context.bot.send_message(
         chat_id=chat_id,
         text=response_text,
-        parse_mode="Markdown"
+        parse_mode="Markdown",
+        reply_markup=reply_markup
     )
+
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles button clicks."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "show_more":
+        detailed_info = context.user_data.get("last_detail", "متأسفانه جزئیات بیشتری در دسترس نیست.")
+        
+        await query.edit_message_text(
+            text=f"{query.message.text}\n\n**جزئیات بیشتر:**\n{detailed_info}",
+            parse_mode="Markdown",
+            reply_markup=None # Remove the button after showing details
+        )
 
 def main():
     """Starts the bot using Polling."""
@@ -62,6 +90,9 @@ def main():
     # Add a handler for all text messages
     text_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
     application.add_handler(text_handler)
+
+    # Add callback query handler
+    application.add_handler(CallbackQueryHandler(handle_callback))
     
     logger.info("Bot is starting polling...")
     application.run_polling()

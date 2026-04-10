@@ -1,7 +1,6 @@
 import logging
 import os
 from datetime import datetime
-from src.bot import main
 
 # Create logs directory if it doesn't exist
 if not os.path.exists("logs"):
@@ -19,6 +18,8 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+from src.bot import main
 
 if __name__ == "__main__":
     logger.info("Starting Danaa Bot...")
