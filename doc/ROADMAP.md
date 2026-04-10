@@ -30,6 +30,13 @@ This roadmap follows a "gradual implementation" approach, starting with minimal 
 - [x] Ensure answers include citations and timestamps from history.
 - [x] **Outcome:** A sophisticated bot that synthesizes human-like, referenced answers from history.
 
+## Phase 5: Automated Evaluation & Testing [NEXT]
+**Goal:** Implement an independent "Test Agent" to monitor bot quality.
+- [ ] Define a "Gold Standard" test set of questions and expected facts.
+- [ ] Implement an LLM-as-a-Judge system to score answers on Factuality, Citations, Safety, and Tone.
+- [ ] Store Q&A pairs for long-term reference and performance tracking.
+- [ ] **Outcome:** An objective, context-independent system for measuring Danaa's accuracy and safety.
+
 ## Phase 6: Conversation & Refinement
 **Goal:** Allow for multi-turn discussions and feedback loops.
 - [ ] Implement session/context management for back-and-forth.
