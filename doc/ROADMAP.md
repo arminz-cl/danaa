@@ -23,11 +23,12 @@ This roadmap follows a "gradual implementation" approach, starting with minimal 
 - [ ] Clean and structure the data (remove PII, handle duplicate questions).
 - [ ] **Outcome:** A structured "offline" knowledge base.
 
-## Phase 4: Context Aware Intelligence (RAG)
+## Phase 4: Context Aware Intelligence (RAG) [DONE]
 **Goal:** Combine AI with community history for context-aware answers.
-- [ ] Implement Retrieval-Augmented Generation (RAG).
-- [ ] Ensure answers include citations (links/timestamps to original sources).
-- [ ] **Outcome:** A sophisticated bot that synthesizes human-like, referenced answers from history.
+- [x] Implement a Search Service with keyword matching and ranking.
+- [x] Integrate retrieval with the AI service (RAG).
+- [x] Ensure answers include citations and timestamps from history.
+- [x] **Outcome:** A sophisticated bot that synthesizes human-like, referenced answers from history.
 
 ## Phase 6: Conversation & Refinement
 **Goal:** Allow for multi-turn discussions and feedback loops.
