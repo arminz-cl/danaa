@@ -202,7 +202,7 @@ HTML_TEMPLATE = """
 </html>
 """
 
-async def generate_dataset(limit=20):
+async def generate_dataset(limit=10):
     print(f"Loading knowledge base from {DATA_PATH}...")
     if not os.path.exists(DATA_PATH):
         print(f"Error: {DATA_PATH} not found.")
@@ -211,7 +211,10 @@ async def generate_dataset(limit=20):
     with open(DATA_PATH, 'r', encoding='utf-8') as f:
         kb = json.load(f)
 
+    # Filter for conversation chains and sort by timestamp (most recent first)
     chains = [item for item in kb if item.get("type") == "conversation_chain"]
+    chains.sort(key=lambda x: x.get("unix_time", 0), reverse=True)
+    
     chains = chains[:limit]
 
     print(f"Processing {len(chains)} questions...")

@@ -79,7 +79,7 @@ class SearchService:
         results.sort(key=lambda x: x["score"], reverse=True)
         return [r["item"] for r in results[:top_k]]
 
-    def format_context(self, search_results: List[Dict[str, Any]]) -> str:
+    def format_context(self, search_results: List[Dict[str, Any]], max_chars_per_msg: int = 500) -> str:
         """Formats search results into a clean text block for the AI prompt."""
         if not search_results:
             return "No relevant community history found."
@@ -90,10 +90,19 @@ class SearchService:
             
             if res.get("type") == "conversation_chain":
                 messages = res.get("messages", [])
-                chain_text = "\n".join([f"- {m['user_hash']}: {m['text']}" for m in messages])
+                formatted_msgs = []
+                for m in messages:
+                    text = m['text']
+                    if len(text) > max_chars_per_msg:
+                        text = text[:max_chars_per_msg] + "... (truncated)"
+                    formatted_msgs.append(f"- {m['user_hash']}: {text}")
+                
+                chain_text = "\n".join(formatted_msgs)
                 block = f"Context {i+1} (Discussion from {timestamp}):\n{chain_text}"
             else:
                 content = res.get("content", "")
+                if len(content) > max_chars_per_msg:
+                    content = content[:max_chars_per_msg] + "... (truncated)"
                 block = f"Context {i+1} (Information from {timestamp}):\n- {content}"
             
             context_blocks.append(block)
