@@ -189,11 +189,11 @@ class DataProcessor:
         logger.info(f"Processed data saved to: {output_path}")
 
 if __name__ == "__main__":
-    raw_path = "data/raw/pgwp/ChatExport_2026-04-11/result.json"
-    output_path = "data/processed/pgwp_cleaned.json"
+    raw_path = "data/raw/express_entry/ChatExport_2026-04-11/result.json"
+    output_path = "data/processed/express_entry_20260411_cleaned.json"
     
     try:
-        processor = DataProcessor(raw_path, "pgwp")
+        processor = DataProcessor(raw_path, "express_entry")
         processor.process()
         processor.save(output_path)
     except Exception as e:
