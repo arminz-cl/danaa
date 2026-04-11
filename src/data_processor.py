@@ -189,7 +189,7 @@ class DataProcessor:
         logger.info(f"Processed data saved to: {output_path}")
 
 if __name__ == "__main__":
-    raw_path = "data/raw/pgwp/result.json"
+    raw_path = "data/raw/pgwp/ChatExport_2026-04-11/result.json"
     output_path = "data/processed/pgwp_cleaned.json"
     
     try:
