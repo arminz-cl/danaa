@@ -46,16 +46,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚠️ این پاسخ بر اساس دانش عمومی در {timestamp} است، توصیه تخصصی نیست و ممکن است اشتباه باشد."
     )
 
-    response_text = f"{short_answer}{disclaimer}"
+    # Force RTL directionality using RLM (\u200f)
+    RLM = "\u200f"
+    
+    # Apply RLM to short answer and disclaimer
+    short_answer_rtl = short_answer.replace("\n", f"\n{RLM}")
+    disclaimer_rtl = disclaimer.replace("\n", f"\n{RLM}")
+    response_text = f"{RLM}{short_answer_rtl}{disclaimer_rtl}"
 
     # Only show the button if there is detailed info
     reply_markup = None
     if detailed_info:
         keyboard = [[InlineKeyboardButton("بیشتر بدانید 🔍", callback_data="show_more")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        # We'll use a temporary storage for the last detailed info
-        # In a real app, you'd want a more robust way to map this
-        context.user_data["last_detail"] = detailed_info
+        # Store RTL-formatted detailed info
+        detailed_info_rtl = f"{RLM}" + detailed_info.replace("\n", f"\n{RLM}")
+        context.user_data["last_detail"] = detailed_info_rtl
 
     await context.bot.send_message(
         chat_id=chat_id,
