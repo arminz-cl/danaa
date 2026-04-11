@@ -57,7 +57,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Only show the button if there is detailed info
     reply_markup = None
     if detailed_info:
-        keyboard = [[InlineKeyboardButton("بیشتر بدانید 🔍", callback_data="show_more")]]
+        keyboard = [[InlineKeyboardButton("جزئیات بیشتر 🔍", callback_data="show_more")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         # Store RTL-formatted detailed info
         detailed_info_rtl = f"{RLM}" + detailed_info.replace("\n", f"\n{RLM}")
