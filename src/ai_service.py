@@ -48,10 +48,12 @@ SYSTEM_PROMPT = (
     "لحن شما: کاملاً دوستانه، خودمانی و مستقیم. مثل اینکه دارید در تلگرام به یک دوست پیام می‌دهید. "
     "از جملات کوتاه استفاده کنید. اصلا از کلمات قلمبه‌سلمبه، رسمی یا اداری استفاده نکنید. "
     "تا جای ممکن از لیست‌بندی (bullet points) پرهیز کنید، مگر اینکه واقعاً لازم باشد.\n\n"
-    "ساختار پاسخ:\n"
-    "۱. بخش اول (پاسخ کوتاه): جواب اصلی را خیلی سریع و در یک خط بدهید.\n"
+    "ساختار پاسخ بسیار مهم (الزامی):\n"
+    "پاسخ شما باید حتماً دو بخش داشته باشد که با عبارت دقیق «---DETAILED_INFO---» از هم جدا شده‌اند.\n"
+    "بخش اول: جواب خیلی کوتاه و صمیمی.\n"
     "---DETAILED_INFO---\n"
-    "۲. بخش دوم (جزئیات): اگر نکته اضافه‌ای هست یا کسی قبلاً تجربه‌ای داشته، اینجا بگویید.\n\n"
+    "بخش دوم: جزئیات بیشتر و تجربه‌های بقیه.\n\n"
+    "حتی اگر جزئیات زیادی نداری، یک جمله در بخش دوم بنویس. این ساختار برای کارکرد دکمه‌های بات حیاتی است.\n\n"
     "قوانین:\n"
     "- حریم خصوصی را رعایت کنید (نام نبرید).\n"
     "- اگر اطلاعاتی ندارید، خیلی راحت بگویید «نمیدونم» یا «باید بیشتر بپرسی»."
@@ -80,7 +82,7 @@ async def get_ai_answer(user_question: str) -> dict:
 
         # 3. Call Groq API
         response = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-8b-instant",
             messages=messages,
             temperature=0.4, # Lower temperature for more direct answers
             max_tokens=1200
@@ -96,17 +98,36 @@ async def get_ai_answer(user_question: str) -> dict:
                 "detailed_info": detailed.strip()
             }
         else:
-            ai_response = {
-                "short_answer": full_content.strip(),
-                "detailed_info": ""
-            }
+            # Fallback if AI forgets delimiter: 
+            # If there's a newline, split it. Otherwise, use whole content.
+            parts = full_content.split("\n\n", 1)
+            if len(parts) > 1:
+                ai_response = {
+                    "short_answer": parts[0].strip(),
+                    "detailed_info": parts[1].strip()
+                }
+            else:
+                ai_response = {
+                    "short_answer": full_content.strip(),
+                    "detailed_info": "جزئیات خاصی در تاریخچه گفتگوها پیدا نکردم، اما اگه سوال دقیق‌تری داری بپرس."
+                }
 
         # Log the experiment details
         log_experiment(user_question, context_text, ai_response)
         
+        # Include context in the return for debugging/dashboard
+        ai_response["retrieved_context"] = context_text
+        
         return ai_response
 
     except Exception as e:
+        if "rate_limit_exceeded" in str(e).lower():
+            logger.warning(f"Rate limit hit: {e}")
+            return {
+                "short_answer": "ببخشید، الان سرم یه کم شلوغه و تعداد درخواست‌ها زیاده. لطفاً یکم دیگه دوباره امتحان کن، حتماً جواب میدم! 🙏",
+                "detailed_info": "محدودیت تعداد درخواست‌های API (Rate Limit) رخ داده است. این مشکل معمولاً بعد از چند دقیقه برطرف می‌شود."
+            }
+        
         logger.error(f"Error in AI Service: {e}")
         return {
             "short_answer": "متأسفانه در حال حاضر در پردازش سوال شما مشکلی پیش آمده است.",
