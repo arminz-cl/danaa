@@ -59,9 +59,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if detailed_info:
         keyboard = [[InlineKeyboardButton("جزئیات بیشتر 🔍", callback_data="show_more")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        # Store RTL-formatted detailed info
+        # Store RTL-formatted detailed info and context
         detailed_info_rtl = f"{RLM}" + detailed_info.replace("\n", f"\n{RLM}")
         context.user_data["last_detail"] = detailed_info_rtl
+        
+        retrieved_context = ai_response_dict.get("retrieved_context", "")
+        context.user_data["last_context"] = f"{RLM}" + retrieved_context.replace("\n", f"\n{RLM}")
 
     await context.bot.send_message(
         chat_id=chat_id,
@@ -74,14 +77,29 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles button clicks."""
     query = update.callback_query
     await query.answer()
+    
+    RLM = "\u200f"
 
     if query.data == "show_more":
         detailed_info = context.user_data.get("last_detail", "متأسفانه جزئیات بیشتری در دسترس نیست.")
         
+        # After showing details, offer the "References" button
+        keyboard = [[InlineKeyboardButton("منابع 📚", callback_data="show_refs")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         await query.edit_message_text(
-            text=f"{query.message.text}\n\n**جزئیات بیشتر:**\n{detailed_info}",
+            text=f"{query.message.text}\n\n{RLM}**جزئیات بیشتر:**\n{detailed_info}",
             parse_mode="Markdown",
-            reply_markup=None # Remove the button after showing details
+            reply_markup=reply_markup
+        )
+    
+    elif query.data == "show_refs":
+        context_data = context.user_data.get("last_context", "متأسفانه منابعی یافت نشد.")
+        
+        await query.edit_message_text(
+            text=f"{query.message.text}\n\n{RLM}**منابع و تاریخچه‌ی گفتگوها:**\n{context_data}",
+            parse_mode="Markdown",
+            reply_markup=None # Final step, remove buttons
         )
 
 def main():
