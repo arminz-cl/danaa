@@ -19,23 +19,26 @@ client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
 search_service = SearchService("data/processed/pgwp_cleaned.json")
 
 def log_experiment(user_question: str, context: str, response: dict):
-    """Logs the RAG interaction in a human-readable format for quality analysis."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    """Logs the RAG interaction into a unique file for each sample."""
+    now = datetime.now()
+    timestamp_str = now.strftime("%Y-%m-%d %H:%M:%S")
+    filename_str = now.strftime("%Y%m%d_%H%M%S")
     
     log_entry = (
         f"{'='*80}\n"
-        f"TIMESTAMP: {timestamp}\n"
+        f"TIMESTAMP: {timestamp_str}\n"
         f"USER QUESTION: {user_question}\n"
         f"{'-'*40}\n"
         f"RETRIEVED CONTEXT:\n{context}\n"
         f"{'-'*40}\n"
         f"AI SHORT ANSWER: {response.get('short_answer')}\n"
         f"AI DETAILED INFO:\n{response.get('detailed_info')}\n"
-        f"{'='*80}\n\n"
+        f"{'='*80}\n"
     )
     
     os.makedirs("experiments", exist_ok=True)
-    with open("experiments/rag_logs.txt", "a", encoding="utf-8") as f:
+    file_path = f"experiments/sample_{filename_str}.txt"
+    with open(file_path, "w", encoding="utf-8") as f:
         f.write(log_entry)
 
 # System Prompt in Farsi to define Danaa's persona and RAG rules
