@@ -15,13 +15,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 class KnowledgeExtractor:
-    def __init__(self, model: str = "gemini-1.5-flash"):
+    def __init__(self, model: str = "gemini-2.5-flash-lite"):
         self.api_key = os.getenv("GOOGLE_API_KEY")
         self.model = model
-        # Use v1 for gemini-1.5-flash stable
-        self.api_url = f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key={self.api_key}"
+        # Use v1beta for Gemini 2.5 Flash features like JSON response support
+        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
 
-        
         self.system_prompt = (
             "You are a Knowledge Engineer. Your task is to extract clear, concise 'Knowledge Cards' from Iranian community chat transcripts regarding Canadian immigration.\n\n"
             "Each Knowledge Card must represent a single fact, rule, or common experience.\n"
@@ -44,26 +43,35 @@ class KnowledgeExtractor:
             logger.error("GOOGLE_API_KEY not found in .env")
             return []
 
+        # Standard payload for Gemini 2.5 Flash v1beta (Proven via terminal)
         payload = {
             "contents": [{
                 "parts": [{"text": f"{self.system_prompt}\n\nExtract from this transcript:\n{text}"}]
             }],
             "generationConfig": {
-                "response_mime_type": "application/json",
+                "responseMimeType": "application/json",
             }
         }
 
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(self.api_url, json=payload, timeout=60.0)
+                
                 if response.status_code != 200:
                     logger.error(f"Gemini API Error: {response.text}")
                     return []
                 
                 result = response.json()
                 content_text = result['candidates'][0]['content']['parts'][0]['text']
-                data = json.loads(content_text)
-                return data.get("cards", data if isinstance(data, list) else [])
+                
+                # Robust parsing
+                try:
+                    data = json.loads(content_text)
+                    return data.get("cards", data if isinstance(data, list) else [])
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to parse AI response as JSON: {content_text[:100]}...")
+                    return []
+
             except Exception as e:
                 logger.error(f"Error during extraction: {e}")
                 return []
@@ -79,7 +87,7 @@ class KnowledgeExtractor:
             else:
                 text = item.get("content", "")
             
-            if len(text.strip()) < 20:
+            if not text or len(text.strip()) < 20:
                 continue
 
             current_chunk.append(text)
@@ -158,8 +166,7 @@ class KnowledgeExtractor:
                 # Respect 15 RPM limit (using 10s to be extra safe with free tier)
                 await asyncio.sleep(10)
 
-            # Save this day's work (Always save to mark as done, even if 0 cards)
-            # os.makedirs(day_dir, exist_ok=True) is already here but making it explicit
+            # Save this day's work
             os.makedirs(day_dir, exist_ok=True)
             output_data = {
                 "metadata": {
@@ -209,5 +216,4 @@ async def main():
     )
 
 if __name__ == "__main__":
-    from datetime import datetime
     asyncio.run(main())
