@@ -64,6 +64,13 @@ class SearchService:
                 score += 10 
         return score
 
+    def _get_item_text(self, item: Dict[str, Any]) -> str:
+        """Extracts the searchable text from a knowledge object."""
+        if item.get("type") == "conversation_chain":
+            # Combine all messages in the chain for searching
+            return " ".join([m["text"] for m in item.get("messages", [])])
+        return item.get("content", "")
+
     def search_cards(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """Searches specifically for distilled knowledge cards."""
         if not query or not self.knowledge_cards:
@@ -82,14 +89,6 @@ class SearchService:
 
         results.sort(key=lambda x: x["score"], reverse=True)
         return [r["card"] for r in results[:top_k]]
-
-    def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-
-        """Extracts the searchable text from a knowledge object."""
-        if item.get("type") == "conversation_chain":
-            # Combine all messages in the chain for searching
-            return " ".join([m["text"] for m in item.get("messages", [])])
-        return item.get("content", "")
 
     def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Searches the knowledge base and returns the top_k most relevant items."""
