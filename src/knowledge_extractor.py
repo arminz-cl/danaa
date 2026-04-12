@@ -32,7 +32,7 @@ logger.addHandler(error_handler)
 logger.addHandler(logging.StreamHandler())
 
 class KnowledgeExtractor:
-    def __init__(self, model: str = "gemma-3-1b-it"):
+    def __init__(self, model: str = "gemini-2.5-flash-lite"):
         self.api_key = os.getenv("GOOGLE_API_KEY")
         self.model = model
         # Use v1beta for Gemini 2.5 Flash features like JSON response support
