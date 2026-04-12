@@ -15,11 +15,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 class KnowledgeExtractor:
-    def __init__(self, model: str = "gemini-2.0-flash"):
+    def __init__(self, model: str = "gemini-1.5-flash"):
         self.api_key = os.getenv("GOOGLE_API_KEY")
         self.model = model
-        # Use v1beta for Gemini 2.0 features and JSON response support
-        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
+        # Use v1 for gemini-1.5-flash stable
+        self.api_url = f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key={self.api_key}"
 
         
         self.system_prompt = (
@@ -155,25 +155,29 @@ class KnowledgeExtractor:
                         card["message_date"] = day_str
                     day_cards.extend(cards)
                 
-                # Respect 15 RPM limit
-                await asyncio.sleep(4)
+                # Respect 15 RPM limit (using 10s to be extra safe with free tier)
+                await asyncio.sleep(10)
 
-            # Save this day's work
+            # Save this day's work (Always save to mark as done, even if 0 cards)
+            # os.makedirs(day_dir, exist_ok=True) is already here but making it explicit
+            os.makedirs(day_dir, exist_ok=True)
+            output_data = {
+                "metadata": {
+                    "source": input_path,
+                    "date": day_str,
+                    "extraction_date": datetime.now().strftime("%Y-%m-%d"),
+                    "model": self.model,
+                    "total_cards": len(day_cards)
+                },
+                "cards": day_cards
+            }
+            with open(day_file, 'w', encoding='utf-8') as f:
+                json.dump(output_data, f, ensure_ascii=False, indent=2)
+            
             if day_cards:
-                os.makedirs(day_dir, exist_ok=True)
-                output_data = {
-                    "metadata": {
-                        "source": input_path,
-                        "date": day_str,
-                        "extraction_date": datetime.now().strftime("%Y-%m-%d"),
-                        "model": self.model,
-                        "total_cards": len(day_cards)
-                    },
-                    "cards": day_cards
-                }
-                with open(day_file, 'w', encoding='utf-8') as f:
-                    json.dump(output_data, f, ensure_ascii=False, indent=2)
                 logger.info(f"  => Saved {len(day_cards)} cards for {day_str}")
+            else:
+                logger.info(f"  => No cards found for {day_str}, saved empty result to skip in future.")
 
 async def main():
     import argparse
