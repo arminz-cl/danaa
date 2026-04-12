@@ -17,7 +17,7 @@ search_service = SearchService("data/processed")
 
 # Google Gemini Config
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GEMINI_MODEL = "gemini-1.5-flash-latest"
+GEMINI_MODEL = "gemini-2.0-flash"
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GOOGLE_API_KEY}"
 
 def log_experiment(user_question: str, context: str, response: dict):

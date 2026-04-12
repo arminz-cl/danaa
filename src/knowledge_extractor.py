@@ -13,11 +13,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 class KnowledgeExtractor:
-    def __init__(self, model: str = "gemini-1.5-flash"):
+    def __init__(self, model: str = "gemini-2.0-flash"):
         self.api_key = os.getenv("GOOGLE_API_KEY")
         self.model = model
-        # Use v1 stable API
-        self.api_url = f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key={self.api_key}"
+        # Use v1beta for Gemini 2.0 features and JSON response support
+        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
 
         
         self.system_prompt = (
