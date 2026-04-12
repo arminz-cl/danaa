@@ -1,8 +1,8 @@
 import os
 import json
 import logging
+import httpx
 from datetime import datetime
-from groq import AsyncGroq
 from dotenv import load_dotenv
 from src.search_service import SearchService
 
@@ -11,12 +11,14 @@ load_dotenv()
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Initialize Groq Client
-client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
-
 # Initialize Search Service
-# We use the cleaned data from the pgwp group
-search_service = SearchService("data/processed/pgwp_cleaned.json")
+# We use all cleaned data from the processed directory
+search_service = SearchService("data/processed")
+
+# Google Gemini Config
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GEMINI_MODEL = "gemini-1.5-flash-latest"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GOOGLE_API_KEY}"
 
 def log_experiment(user_question: str, context: str, response: dict):
     """Logs the RAG interaction into a unique file for each sample."""
@@ -61,34 +63,49 @@ SYSTEM_PROMPT = (
 
 async def get_ai_answer(user_question: str) -> dict:
     """
-    Retrieves relevant context, augments the prompt, and gets an answer from Groq.
+    Retrieves relevant context (Facts + Snippets), augments the prompt, and gets an answer from Gemini.
     Returns a dictionary with 'short_answer' and 'detailed_info'.
     """
     try:
-        # 1. Search for relevant community context
-        search_results = search_service.search(user_question, top_k=4)
-        context_text = search_service.format_context(search_results)
+        # 1. Search for relevant knowledge
+        # Find distilled facts (Knowledge Cards)
+        cards = search_service.search_cards(user_question, top_k=3)
+        # Find raw community snippets
+        snippets = search_service.search(user_question, top_k=4)
+        
+        # Format the combined context
+        context_text = search_service.format_context(snippets, cards)
         
         # 2. Construct the prompt with context
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user", 
-                "content": f"سوال کاربر: {user_question}\n\nمتن مستندات جامعه برای راهنمایی:\n{context_text}"
-            }
-        ]
-
-        logger.info(f"Sending request to Groq with {len(search_results)} context blocks.")
-
-        # 3. Call Groq API
-        response = await client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=messages,
-            temperature=0.4, # Lower temperature for more direct answers
-            max_tokens=1200
+        prompt_content = (
+            f"{SYSTEM_PROMPT}\n\n"
+            f"سوال کاربر: {user_question}\n\n"
+            f"اطلاعات استخراج شده از جامعه برای راهنمایی:\n{context_text}\n\n"
+            "نکته: بخش 'CONFIRMED KNOWLEDGE' حقایق تایید شده هستند. "
+            "بخش 'COMMUNITY CONVERSATIONS' تجربه‌های شخصی افراد است که ممکن است متفاوت باشد."
         )
-        
-        full_content = response.choices[0].message.content
+
+        # 3. Call Gemini API
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt_content}]
+            }],
+            "generationConfig": {
+                "temperature": 0.4,
+                "maxOutputTokens": 1200,
+            }
+        }
+
+        logger.info(f"Sending request to Gemini with {len(cards)} facts and {len(snippets)} snippets.")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(GEMINI_URL, json=payload, timeout=60.0)
+            if response.status_code != 200:
+                logger.error(f"Gemini API Error: {response.text}")
+                raise Exception(f"Gemini API error: {response.status_code}")
+            
+            result = response.json()
+            full_content = result['candidates'][0]['content']['parts'][0]['text']
         
         ai_response = {}
         if "---DETAILED_INFO---" in full_content:
@@ -99,7 +116,6 @@ async def get_ai_answer(user_question: str) -> dict:
             }
         else:
             # Fallback if AI forgets delimiter: 
-            # If there's a newline, split it. Otherwise, use whole content.
             parts = full_content.split("\n\n", 1)
             if len(parts) > 1:
                 ai_response = {
@@ -121,13 +137,6 @@ async def get_ai_answer(user_question: str) -> dict:
         return ai_response
 
     except Exception as e:
-        if "rate_limit_exceeded" in str(e).lower():
-            logger.warning(f"Rate limit hit: {e}")
-            return {
-                "short_answer": "ببخشید، الان سرم یه کم شلوغه و تعداد درخواست‌ها زیاده. لطفاً یکم دیگه دوباره امتحان کن، حتماً جواب میدم! 🙏",
-                "detailed_info": "محدودیت تعداد درخواست‌های API (Rate Limit) رخ داده است. این مشکل معمولاً بعد از چند دقیقه برطرف می‌شود."
-            }
-        
         logger.error(f"Error in AI Service: {e}")
         return {
             "short_answer": "متأسفانه در حال حاضر در پردازش سوال شما مشکلی پیش آمده است.",

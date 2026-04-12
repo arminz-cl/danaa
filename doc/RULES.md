@@ -24,13 +24,18 @@ These rules govern all technical and operational aspects of the Danaa project.
 - **Minimalist Approach:** Do not add a database until the "Simple Search" phase requires persistence beyond a static file.
 - **AI Selection:** Prefer "Free Tier" or "Pay-as-you-go" AI APIs with the lowest possible cost-per-token.
 
-## 4. Implementation Workflow
+## 5. Implementation Workflow
 - **Plan Before Act:** For every major task, a short written plan must be reviewed and approved.
 - **Git Protocol:** NEVER suggest, `git commit`, or `git push` changes unless explicitly requested by the user. I will only perform or propose git operations when you ask for them.
 - **Gradual Complexity:** Each phase must be functional and testable before moving to the next.
 - **Testing:** Every new feature should include automated tests to verify its core logic.
 
-## 4. Architectural Standards
+## 6. Architectural Standards
 - **Modular Design:** Keep the data ingestion, search, and Telegram bot layers decoupled.
 - **Asynchronous Processing:** Prefer event-driven architectures (e.g., SQS + Lambda) for long-running tasks.
 - **Documentation:** Every major architectural change must be documented in the `doc/` directory.
+
+## 7. Data Persistence & Integrity
+- **Persistence Mandate:** Do NOT drop, overwrite with empty data, or delete "hard processed" files (e.g., cleaned data, knowledge cards, vector stores) without explicit user permission.
+- **Versioning Strategy:** Unless explicitly requested otherwise, always implement a versioning or backup strategy when updating processed data files (e.g., timestamped files or `.bak` backups) to ensure data safety.
+- **Safe Writes:** Implement validation checks (e.g., non-empty check) before saving or updating persistent data files to prevent accidental data loss during failures.
