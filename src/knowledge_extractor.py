@@ -10,24 +10,29 @@ from dotenv import load_dotenv
 # Force override to ensure the key from .env is used
 load_dotenv(override=True)
 
-# Create logs directory if it doesn't exist
-if not os.path.exists("logs"):
-    os.makedirs("logs")
+# Setup logging
+log_dir = "logs/knowledge_extractor"
+os.makedirs(log_dir, exist_ok=True)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-# Configure logging
-log_filename = "logs/extractor.log"
-logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_filename),
-        logging.StreamHandler()
-    ]
-)
+# Standard log handler
+info_handler = RotatingFileHandler(f"{log_dir}/knowledge_extractor.log", maxBytes=10*1024*1024, backupCount=5)
+info_handler.setLevel(logging.INFO)
+info_handler.setFormatter(formatter)
+
+# Error log handler
+error_handler = RotatingFileHandler(f"{log_dir}/knowledge_extractor.errors", maxBytes=10*1024*1024, backupCount=5)
+error_handler.setLevel(logging.ERROR)
+error_handler.setFormatter(formatter)
+
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.addHandler(info_handler)
+logger.addHandler(error_handler)
+logger.addHandler(logging.StreamHandler())
 
 class KnowledgeExtractor:
-    def __init__(self, model: str = "gemini-2.5-flash-lite"):
+    def __init__(self, model: str = "gemma-3-1b-it"):
         self.api_key = os.getenv("GOOGLE_API_KEY")
         self.model = model
         # Use v1beta for Gemini 2.5 Flash features like JSON response support

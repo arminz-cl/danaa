@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import httpx
 from datetime import datetime
 from dotenv import load_dotenv
@@ -8,8 +9,26 @@ from src.search_service import SearchService
 
 load_dotenv()
 
-# Configure logging
+# Setup logging
+log_dir = "logs/ai_service"
+os.makedirs(log_dir, exist_ok=True)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# Standard log handler
+info_handler = RotatingFileHandler(f"{log_dir}/ai_service.log", maxBytes=10*1024*1024, backupCount=5)
+info_handler.setLevel(logging.INFO)
+info_handler.setFormatter(formatter)
+
+# Error log handler
+error_handler = RotatingFileHandler(f"{log_dir}/ai_service.errors", maxBytes=10*1024*1024, backupCount=5)
+error_handler.setLevel(logging.ERROR)
+error_handler.setFormatter(formatter)
+
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.addHandler(info_handler)
+logger.addHandler(error_handler)
+logger.addHandler(logging.StreamHandler())
 
 # Initialize Search Service
 # We use all cleaned data from the processed directory
@@ -17,7 +36,8 @@ search_service = SearchService("data/processed")
 
 # Google Gemini Config
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemma-3-1b-it"
+# Use v1beta for Gemma models
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GOOGLE_API_KEY}"
 
 def log_experiment(user_question: str, context: str, response: dict):

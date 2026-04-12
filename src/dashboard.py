@@ -1,19 +1,68 @@
 import os
 import json
 import logging
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from logging.handlers import RotatingFileHandler
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 app = FastAPI()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Setup logging
+log_dir = "logs/dashboard"
+os.makedirs(log_dir, exist_ok=True)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# Standard log handler
+info_handler = RotatingFileHandler(f"{log_dir}/dashboard.log", maxBytes=10*1024*1024, backupCount=5)
+info_handler.setLevel(logging.INFO)
+info_handler.setFormatter(formatter)
+
+# Error log handler
+error_handler = RotatingFileHandler(f"{log_dir}/dashboard.errors", maxBytes=10*1024*1024, backupCount=5)
+error_handler.setLevel(logging.ERROR)
+error_handler.setFormatter(formatter)
+
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.addHandler(info_handler)
+logger.addHandler(error_handler)
+logger.addHandler(logging.StreamHandler())
 
 PROCESSED_DIR = "data/processed"
 KNOWLEDGE_BASE_DIR = "data/knowledge_base"
+LOGS_BASE_DIR = "logs"
+
+@app.get("/api/logs")
+async def list_logs():
+    """Returns a tree of available log files."""
+    log_tree = {}
+    if not os.path.exists(LOGS_BASE_DIR):
+        return log_tree
+        
+    for service in os.listdir(LOGS_BASE_DIR):
+        service_path = os.path.join(LOGS_BASE_DIR, service)
+        if os.path.isdir(service_path):
+            log_tree[service] = sorted([f for f in os.listdir(service_path) if f.endswith(('.log', '.errors'))])
+    return log_tree
+
+@app.get("/api/logs/{service}/{filename}")
+async def get_log_content(service: str, filename: str):
+    """Returns the last 500 lines of a specific log file."""
+    safe_service = "".join(x for x in service if x.isalnum() or x == "_")
+    safe_filename = "".join(x for x in filename if x.isalnum() or x in "._")
+    
+    path = os.path.join(LOGS_BASE_DIR, safe_service, safe_filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Log file not found")
+    
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            return {"content": "".join(lines[-500:])}
+    except Exception as e:
+        return {"content": f"Error reading log: {str(e)}"}
 
 @app.get("/api/cards")
 async def get_cards():
@@ -26,7 +75,6 @@ async def get_cards():
         for root, dirs, files in os.walk(KNOWLEDGE_BASE_DIR):
             for filename in files:
                 if filename.endswith(".json") and "_cards" in filename:
-                    # e.g. "pgwp_cards.json" -> "pgwp"
                     prefix = filename.split('_')[0]
                     name = "★ " + prefix.title()
                     path = os.path.join(root, filename)
@@ -34,23 +82,15 @@ async def get_cards():
                     try:
                         with open(path, 'r', encoding='utf-8') as f:
                             data = json.load(f)
-                            # Handle both list and dict with "cards" key
-                            cards = []
-                            if isinstance(data, dict):
-                                cards = data.get("cards", [])
-                            elif isinstance(data, list):
-                                cards = data
-                                
+                            cards = data.get("cards", []) if isinstance(data, dict) else data
                             if cards:
                                 total_kb_cards += len(cards)
                                 if name not in grouped_data:
                                     grouped_data[name] = []
                                 grouped_data[name].extend(cards)
-                                logger.info(f"Loaded {len(cards)} cards from {path} into {name}")
-                    except Exception as e:
-                        logger.error(f"Error reading {path}: {e}")
+                    except: pass
 
-    # 2. Load Raw Processed History (Most recent 100)
+    # 2. Load Raw Process History
     if os.path.exists(PROCESSED_DIR):
         for filename in os.listdir(PROCESSED_DIR):
             if filename.endswith(".json") and "_cleaned" in filename:
@@ -59,15 +99,12 @@ async def get_cards():
                 try:
                     with open(path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
-                        # Convert raw items to "card" format for UI
                         snippets = []
-                        # Take last 100 items
                         for item in reversed(data[-100:]):
                             if item.get("type") == "conversation_chain":
                                 fact = " | ".join([f"{m['user_hash']}: {m['text']}" for m in item.get("messages", [])])
                             else:
                                 fact = item.get("content", "")
-                            
                             snippets.append({
                                 "topic": item.get("type", "Info").upper(),
                                 "fact": fact,
@@ -78,7 +115,6 @@ async def get_cards():
                         grouped_data[name] = snippets
                 except: pass
                 
-    logger.info(f"Dashboard serving {total_kb_cards} cards total across {len(grouped_data)} groups.")
     return {
         "metadata": {"total_cards": total_kb_cards},
         "data": grouped_data
@@ -86,7 +122,7 @@ async def get_cards():
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard_home(request: Request):
-    """Serves the main dashboard HTML page with tab support."""
+    """Serves the main dashboard HTML page."""
     html_content = """
     <!DOCTYPE html>
     <html lang="en">
@@ -113,7 +149,7 @@ async def dashboard_home(request: Request):
                 margin: 0;
                 padding: 20px;
             }
-            .container { max-width: 1200px; margin: 0 auto; }
+            .container { max-width: 1400px; margin: 0 auto; }
             .header {
                 display: flex;
                 justify-content: space-between;
@@ -125,17 +161,8 @@ async def dashboard_home(request: Request):
                 box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
             }
             .title h1 { margin: 0; font-size: 24px; color: #0f172a; display: flex; align-items: center; gap: 10px; }
-            .title p { margin: 5px 0 0; color: var(--text-muted); font-size: 14px; }
+            .card-counter { background: var(--primary); color: white; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 800; }
             
-            .card-counter {
-                background: var(--primary);
-                color: white;
-                padding: 4px 12px;
-                border-radius: 20px;
-                font-size: 14px;
-                font-weight: 800;
-            }
-
             .tabs {
                 display: flex;
                 gap: 10px;
@@ -143,7 +170,6 @@ async def dashboard_home(request: Request):
                 border-bottom: 2px solid #e2e8f0;
                 padding-bottom: 10px;
                 overflow-x: auto;
-                padding-bottom: 10px;
             }
             .tab-btn {
                 padding: 10px 20px;
@@ -153,20 +179,49 @@ async def dashboard_home(request: Request):
                 color: var(--text-muted);
                 cursor: pointer;
                 border-radius: 8px;
-                transition: all 0.2s;
                 white-space: nowrap;
             }
-            .tab-btn:hover { background: #e2e8f0; }
-            .tab-btn.active {
-                background: var(--primary);
-                color: white;
-            }
+            .tab-btn.active { background: var(--primary); color: white; }
 
-            .grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
+            
+            .log-view {
+                display: none;
+                flex-direction: row;
                 gap: 20px;
+                height: 75vh;
+                background: white;
+                border-radius: 12px;
+                padding: 20px;
+                box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
             }
+            .log-sidebar { width: 280px; border-right: 1px solid #e2e8f0; overflow-y: auto; padding-right: 15px; }
+            .log-content {
+                flex-grow: 1;
+                background: #0f172a;
+                color: #e2e8f0;
+                padding: 20px;
+                border-radius: 8px;
+                font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+                font-size: 12px;
+                overflow-y: auto;
+                white-space: pre-wrap;
+            }
+            .log-service-header { font-weight: 800; font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin: 15px 0 5px; letter-spacing: 1px; }
+            .log-file-link {
+                display: block;
+                padding: 8px 12px;
+                border-radius: 6px;
+                font-size: 13px;
+                color: #334155;
+                cursor: pointer;
+                margin-bottom: 2px;
+            }
+            .log-file-link:hover { background: #f1f5f9; }
+            .log-file-link.active { background: var(--primary); color: white; }
+            .log-file-link.error-file { color: #ef4444; border-left: 3px solid #ef4444; }
+            .log-file-link.active.error-file { color: white; }
+
             .card {
                 background: var(--card-bg);
                 border-radius: 12px;
@@ -175,77 +230,33 @@ async def dashboard_home(request: Request):
                 border-left: 5px solid #cbd5e1;
                 display: flex;
                 flex-direction: column;
-                animation: fadeIn 0.3s ease-in-out;
             }
-            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-            
             .card.rule { border-left-color: var(--rule-color); }
             .card.advice { border-left-color: var(--advice-color); }
             .card.experience { border-left-color: var(--experience-color); }
-            .card.question { border-left-color: var(--question-color); }
-
-            .card-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                margin-bottom: 15px;
-            }
-            .topic { font-weight: 700; font-size: 13px; text-transform: uppercase; color: var(--text-muted); }
-            .type-badge {
-                padding: 2px 8px;
-                border-radius: 4px;
-                font-size: 10px;
-                font-weight: 700;
-                color: white;
-                text-transform: uppercase;
-            }
+            .fact { font-size: 16px; line-height: 1.6; direction: rtl; text-align: right; margin: 15px 0; color: #334155; }
+            .type-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; color: white; text-transform: uppercase; }
             .rule .type-badge { background-color: var(--rule-color); }
             .advice .type-badge { background-color: var(--advice-color); }
             .experience .type-badge { background-color: var(--experience-color); }
-            .question .type-badge { background-color: var(--question-color); }
-
-            .fact {
-                font-size: 17px;
-                line-height: 1.6;
-                direction: rtl;
-                text-align: right;
-                flex-grow: 1;
-                margin-bottom: 15px;
-                color: #334155;
-            }
-
-            .card-footer {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                font-size: 11px;
-                color: var(--text-muted);
-                border-top: 1px solid #f1f5f9;
-                padding-top: 10px;
-            }
-            .confidence-bar { width: 50px; height: 5px; background: #e2e8f0; border-radius: 3px; margin-left: 5px; display: inline-block; overflow: hidden; }
-            .confidence-fill { height: 100%; background: #fbbf24; }
-
-            #status { font-size: 12px; color: var(--advice-color); font-weight: 600; }
-            .empty-state { text-align: center; padding: 100px 0; color: var(--text-muted); grid-column: 1 / -1; }
         </style>
     </head>
     <body>
         <div class="container">
             <div class="header">
                 <div class="title">
-                    <h1>Dana Knowledge Dashboard <span id="card-count" class="card-counter">0</span></h1>
-                    <p>Distilled Facts from Iranian Canadian Community</p>
+                    <h1>Dana Dashboard <span id="card-count" class="card-counter">0</span></h1>
                 </div>
-                <div id="status">LIVE</div>
+                <div id="status" style="color: #10b981; font-weight: 700;">LIVE</div>
             </div>
 
-            <div id="tabs" class="tabs">
-                <!-- Tab buttons will be injected here -->
-            </div>
+            <div id="tabs" class="tabs"></div>
 
-            <div id="grid" class="grid">
-                <!-- Cards will be injected here -->
+            <div id="grid" class="grid"></div>
+
+            <div id="log-view" class="log-view">
+                <div id="log-sidebar" class="log-sidebar"></div>
+                <div id="log-content" class="log-content">Select a log file...</div>
             </div>
         </div>
 
@@ -257,93 +268,91 @@ async def dashboard_home(request: Request):
                 try {
                     const response = await fetch('/api/cards');
                     const json = await response.json();
-                    const newData = json.data;
-                    const metadata = json.metadata;
-
-                    document.getElementById('card-count').innerText = metadata.total_cards;
+                    document.getElementById('card-count').innerText = json.metadata.total_cards;
                     
-                    if (JSON.stringify(newData) === JSON.stringify(allData)) return;
-                    allData = newData;
+                    if (JSON.stringify(json.data) === JSON.stringify(allData)) return;
+                    allData = json.data;
 
-                    const tabContainer = document.getElementById('tabs');
                     const keys = Object.keys(allData);
+                    keys.push("📁 LOGS");
                     
-                    if (keys.length === 0) {
-                        renderEmpty();
-                        return;
-                    }
-
-                    // Preserve active tab or set to first one
-                    if (!activeTab || !allData[activeTab]) {
-                        activeTab = keys[0];
-                    }
+                    if (!activeTab || (!allData[activeTab] && activeTab !== "📁 LOGS")) activeTab = keys[0];
 
                     renderTabs(keys);
-                    renderGrid();
-                } catch (error) {
-                    console.error('Error:', error);
-                    document.getElementById('status').innerText = 'OFFLINE';
-                    document.getElementById('status').style.color = '#ef4444';
-                }
+                    renderContent();
+                } catch (e) { document.getElementById('status').innerText = 'OFFLINE'; }
             }
 
             function renderTabs(keys) {
-                const tabContainer = document.getElementById('tabs');
-                tabContainer.innerHTML = '';
-                keys.forEach(key => {
+                const container = document.getElementById('tabs');
+                container.innerHTML = '';
+                keys.forEach(k => {
                     const btn = document.createElement('button');
-                    btn.className = `tab-btn ${key === activeTab ? 'active' : ''}`;
-                    btn.innerText = key;
-                    btn.onclick = () => {
-                        activeTab = key;
-                        Array.from(tabContainer.children).forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                        renderGrid();
-                    };
-                    tabContainer.appendChild(btn);
+                    btn.className = `tab-btn ${k === activeTab ? 'active' : ''}`;
+                    btn.innerText = k;
+                    btn.onclick = () => { activeTab = k; renderTabs(keys); renderContent(); };
+                    container.appendChild(btn);
                 });
+            }
+
+            function renderContent() {
+                const grid = document.getElementById('grid');
+                const logView = document.getElementById('log-view');
+                if (activeTab === "📁 LOGS") {
+                    grid.style.display = 'none';
+                    logView.style.display = 'flex';
+                    fetchLogsList();
+                } else {
+                    grid.style.display = 'grid';
+                    logView.style.display = 'none';
+                    renderGrid();
+                }
+            }
+
+            async function fetchLogsList() {
+                const res = await fetch('/api/logs');
+                const logData = await res.json();
+                const sidebar = document.getElementById('log-sidebar');
+                sidebar.innerHTML = '';
+                Object.keys(logData).forEach(service => {
+                    const h = document.createElement('div');
+                    h.className = 'log-service-header';
+                    h.innerText = service.replace('_', ' ');
+                    sidebar.appendChild(h);
+                    logData[service].forEach(f => {
+                        const link = document.createElement('a');
+                        link.className = `log-file-link ${f.endsWith('.errors') ? 'error-file' : ''}`;
+                        link.innerText = f;
+                        link.onclick = () => loadLogContent(service, f, link);
+                        sidebar.appendChild(link);
+                    });
+                });
+            }
+
+            async function loadLogContent(s, f, el) {
+                document.querySelectorAll('.log-file-link').forEach(l => l.classList.remove('active'));
+                el.classList.add('active');
+                const content = document.getElementById('log-content');
+                content.innerText = "Loading...";
+                const res = await fetch(`/api/logs/${s}/${f}`);
+                const data = await res.json();
+                content.innerText = data.content || "Empty.";
+                content.scrollTop = content.scrollHeight;
             }
 
             function renderGrid() {
                 const grid = document.getElementById('grid');
                 grid.innerHTML = '';
-                const cards = allData[activeTab] || [];
-
-                if (cards.length === 0) {
-                    grid.innerHTML = '<div class="empty-state">No cards extracted for this source yet.</div>';
-                    return;
-                }
-
-                cards.forEach(card => {
-                    const cardEl = document.createElement('div');
-                    cardEl.className = `card ${card.type.toLowerCase()}`;
-                    const confidencePct = (card.confidence / 10) * 100;
-                    
-                    cardEl.innerHTML = `
-                        <div class="card-header">
-                            <span class="topic">${card.topic}</span>
-                            <span class="type-badge">${card.type}</span>
-                        </div>
-                        <div class="fact">${card.fact}</div>
-                        <div class="card-footer">
-                            <div>
-                                <span>Confidence: ${card.confidence}/10</span>
-                                <div class="confidence-bar"><div class="confidence-fill" style="width: ${confidencePct}%"></div></div>
-                            </div>
-                            <span>Source: ${card.source_file || 'N/A'}</span>
-                        </div>
-                    `;
-                    grid.appendChild(cardEl);
+                (allData[activeTab] || []).forEach(c => {
+                    const el = document.createElement('div');
+                    el.className = `card ${c.type.toLowerCase()}`;
+                    el.innerHTML = `<div style="display:flex;justify-content:space-between"><span style="font-weight:700;font-size:12px;color:#64748b">${c.topic}</span><span class="type-badge">${c.type}</span></div><div class="fact">${c.fact}</div><div style="font-size:10px;color:#94a3b8">Source: ${c.source_file}</div>`;
+                    grid.appendChild(el);
                 });
             }
 
-            function renderEmpty() {
-                document.getElementById('tabs').innerHTML = '';
-                document.getElementById('grid').innerHTML = '<div class="empty-state">Waiting for extraction to begin...</div>';
-            }
-
             fetchData();
-            setInterval(fetchData, 3000);
+            setInterval(fetchData, 5000);
         </script>
     </body>
     </html>

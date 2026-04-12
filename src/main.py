@@ -1,23 +1,28 @@
 import logging
 import os
+from logging.handlers import RotatingFileHandler
 from datetime import datetime
 
-# Create logs directory if it doesn't exist
-if not os.path.exists("logs"):
-    os.makedirs("logs")
+# Setup logging
+log_dir = "logs/bot"
+os.makedirs(log_dir, exist_ok=True)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-# Configure logging
-log_filename = f"logs/bot_{datetime.now().strftime('%Y%m%d')}.log"
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_filename),
-        logging.StreamHandler()
-    ]
-)
+# Standard log handler
+info_handler = RotatingFileHandler(f"{log_dir}/bot.log", maxBytes=10*1024*1024, backupCount=5)
+info_handler.setLevel(logging.INFO)
+info_handler.setFormatter(formatter)
+
+# Error log handler
+error_handler = RotatingFileHandler(f"{log_dir}/bot.errors", maxBytes=10*1024*1024, backupCount=5)
+error_handler.setLevel(logging.ERROR)
+error_handler.setFormatter(formatter)
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.addHandler(info_handler)
+logger.addHandler(error_handler)
+logger.addHandler(logging.StreamHandler())
 
 from src.bot import main
 
