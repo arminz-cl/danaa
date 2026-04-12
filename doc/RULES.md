@@ -26,6 +26,7 @@ These rules govern all technical and operational aspects of the Danaa project.
 
 ## 5. Implementation Workflow
 - **Plan Before Act:** For every major task, a short written plan must be reviewed and approved.
+- **Read-Only Actions:** For read-only tools (such as checking running processes, reading git info, reading files) that don't modify or impact anything, permission is not needed.
 - **Git Protocol:** NEVER suggest, `git commit`, or `git push` changes unless explicitly requested by the user. I will only perform or propose git operations when you ask for them.
 - **Gradual Complexity:** Each phase must be functional and testable before moving to the next.
 - **Testing:** Every new feature should include automated tests to verify its core logic.
