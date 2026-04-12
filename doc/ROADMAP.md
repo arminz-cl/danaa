@@ -42,3 +42,10 @@ This roadmap follows a "gradual implementation" approach, starting with minimal 
 - [ ] Implement session/context management for back-and-forth.
 - [ ] Add a user feedback mechanism (upvote/downvote answers).
 - [ ] Refine the system based on real-world usage.
+
+## Phase 7: Knowledge Consolidation [NEW]
+**Goal:** Synthesize fragmented cards into authoritative "Master Cards."
+- [ ] Implement a "Consolidator Agent" to merge repetitive or related knowledge cards.
+- [ ] Add conflict detection for contradictory community reports.
+- [ ] Establish a "Temporal Decay" system to automatically archive outdated facts.
+- [ ] **Outcome:** A leaner, more accurate, and high-signal knowledge base.
