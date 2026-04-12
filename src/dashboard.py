@@ -32,6 +32,7 @@ logger.addHandler(logging.StreamHandler())
 
 PROCESSED_DIR = "data/processed"
 KNOWLEDGE_BASE_DIR = "data/knowledge_base"
+EXPERIMENTS_DIR = "experiments"
 LOGS_BASE_DIR = "logs"
 
 @app.get("/api/logs")
@@ -66,7 +67,7 @@ async def get_log_content(service: str, filename: str):
 
 @app.get("/api/cards")
 async def get_cards():
-    """Reads both knowledge cards and raw processed chats, grouped by source."""
+    """Reads knowledge cards, raw chats, and RAG experiments, grouped by source."""
     grouped_data = {}
     total_kb_cards = 0
     
@@ -114,6 +115,42 @@ async def get_cards():
                             })
                         grouped_data[name] = snippets
                 except: pass
+
+    # 3. Load RAG Questions (Experiments)
+    if os.path.exists(EXPERIMENTS_DIR):
+        name = "🔍 QUESTIONS"
+        questions = []
+        files = sorted([f for f in os.listdir(EXPERIMENTS_DIR) if f.startswith("sample_")], reverse=True)[:50]
+        for filename in files:
+            path = os.path.join(EXPERIMENTS_DIR, filename)
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    # Parsing with broad splitters to capture context
+                    parts = content.split("USER QUESTION:", 1)
+                    if len(parts) > 1:
+                        q_and_rest = parts[1].split("RETRIEVED CONTEXT:", 1)
+                        question = q_and_rest[0].strip()
+                        
+                        ctx_and_ans = q_and_rest[1].split("AI SHORT ANSWER:", 1)
+                        context = ctx_and_ans[0].strip()
+                        
+                        ans_and_detail = ctx_and_ans[1].split("AI DETAILED INFO:", 1)
+                        ai_ans = ans_and_detail[0].strip()
+                        detailed_info = ans_and_detail[1].strip() if len(ans_and_detail) > 1 else ""
+                        
+                        questions.append({
+                            "topic": "RAG Interaction",
+                            "fact": f"❓ {question}\n\n🤖 {ai_ans}",
+                            "type": "question",
+                            "confidence": 10,
+                            "source_file": filename,
+                            "rag_context": context,
+                            "detailed_info": detailed_info
+                        })
+            except: pass
+        if questions:
+            grouped_data[name] = questions
                 
     return {
         "metadata": {"total_cards": total_kb_cards},
@@ -230,15 +267,27 @@ async def dashboard_home(request: Request):
                 border-left: 5px solid #cbd5e1;
                 display: flex;
                 flex-direction: column;
+                cursor: pointer;
+                transition: transform 0.2s, box-shadow 0.2s;
             }
+            .card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); }
             .card.rule { border-left-color: var(--rule-color); }
             .card.advice { border-left-color: var(--advice-color); }
             .card.experience { border-left-color: var(--experience-color); }
-            .fact { font-size: 16px; line-height: 1.6; direction: rtl; text-align: right; margin: 15px 0; color: #334155; }
+            .card.question { border-left-color: var(--question-color); }
+            
+            .fact { font-size: 15px; line-height: 1.6; direction: rtl; text-align: right; margin: 15px 0; color: #334155; white-space: pre-wrap; }
             .type-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; color: white; text-transform: uppercase; }
             .rule .type-badge { background-color: var(--rule-color); }
             .advice .type-badge { background-color: var(--advice-color); }
             .experience .type-badge { background-color: var(--experience-color); }
+            .question .type-badge { background-color: var(--question-color); }
+
+            .card-details { display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #475569; }
+            .card-details.active { display: block; }
+            .detail-section { margin-bottom: 15px; }
+            .detail-label { font-weight: 800; text-transform: uppercase; font-size: 11px; color: var(--text-muted); margin-bottom: 5px; display: block; }
+            .detail-content { white-space: pre-wrap; direction: rtl; text-align: right; background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; }
         </style>
     </head>
     <body>
@@ -346,7 +395,40 @@ async def dashboard_home(request: Request):
                 (allData[activeTab] || []).forEach(c => {
                     const el = document.createElement('div');
                     el.className = `card ${c.type.toLowerCase()}`;
-                    el.innerHTML = `<div style="display:flex;justify-content:space-between"><span style="font-weight:700;font-size:12px;color:#64748b">${c.topic}</span><span class="type-badge">${c.type}</span></div><div class="fact">${c.fact}</div><div style="font-size:10px;color:#94a3b8">Source: ${c.source_file}</div>`;
+                    
+                    let detailsHtml = '';
+                    if (c.rag_context || c.detailed_info) {
+                        detailsHtml = `
+                            <div class="card-details">
+                                ${c.detailed_info ? `
+                                <div class="detail-section">
+                                    <span class="detail-label">Detailed AI Response</span>
+                                    <div class="detail-content">${c.detailed_info}</div>
+                                </div>` : ''}
+                                ${c.rag_context ? `
+                                <div class="detail-section">
+                                    <span class="detail-label">RAG Context (Retrieved Knowledge)</span>
+                                    <div class="detail-content">${c.rag_context}</div>
+                                </div>` : ''}
+                            </div>
+                        `;
+                    }
+
+                    el.innerHTML = `
+                        <div style="display:flex;justify-content:space-between">
+                            <span style="font-weight:700;font-size:12px;color:#64748b">${c.topic}</span>
+                            <span class="type-badge">${c.type}</span>
+                        </div>
+                        <div class="fact">${c.fact}</div>
+                        <div style="font-size:10px;color:#94a3b8">Source: ${c.source_file}</div>
+                        ${detailsHtml}
+                    `;
+                    
+                    el.onclick = () => {
+                        const details = el.querySelector('.card-details');
+                        if (details) details.classList.toggle('active');
+                    };
+                    
                     grid.appendChild(el);
                 });
             }

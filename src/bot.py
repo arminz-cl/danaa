@@ -36,7 +36,7 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Passes the user's message to Groq and replies with the AI-generated answer.
+    Passes the user's message to the AI service and replies with the AI-generated answer.
     """
     if not update or not update.message:
         return
@@ -54,11 +54,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ai_response_dict = await get_ai_answer(user_text)
     short_answer = ai_response_dict.get("short_answer", "")
     detailed_info = ai_response_dict.get("detailed_info", "")
+    retrieved_context = ai_response_dict.get("retrieved_context", "")
 
-    # Store detailed info in user_data to retrieve later on button click
-    # Use message_id as key to distinguish between different queries
-    if not context.user_data:
-        context.user_data["details"] = {}
+    # Force RTL directionality using RLM (\u200f)
+    RLM = "\u200f"
     
     # Simplified disclaimer in Farsi (integrated timestamp)
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
@@ -67,9 +66,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚠️ این پاسخ بر اساس دانش عمومی در {timestamp} است، توصیه تخصصی نیست و ممکن است اشتباه باشد."
     )
 
-    # Force RTL directionality using RLM (\u200f)
-    RLM = "\u200f"
-    
     # Apply RLM to short answer and disclaimer
     short_answer_rtl = short_answer.replace("\n", f"\n{RLM}")
     disclaimer_rtl = disclaimer.replace("\n", f"\n{RLM}")
@@ -80,48 +76,82 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if detailed_info:
         keyboard = [[InlineKeyboardButton("جزئیات بیشتر 🔍", callback_data="show_more")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        # Store RTL-formatted detailed info and context
-        detailed_info_rtl = f"{RLM}" + detailed_info.replace("\n", f"\n{RLM}")
-        context.user_data["last_detail"] = detailed_info_rtl
-        
-        retrieved_context = ai_response_dict.get("retrieved_context", "")
-        context.user_data["last_context"] = f"{RLM}" + retrieved_context.replace("\n", f"\n{RLM}")
 
-    await context.bot.send_message(
+    sent_message = await context.bot.send_message(
         chat_id=chat_id,
         text=response_text,
         parse_mode="Markdown",
         reply_markup=reply_markup
     )
 
+    # Store data using the message_id to allow multiple independent interactions
+    if "rag_storage" not in context.user_data:
+        context.user_data["rag_storage"] = {}
+    
+    storage_id = str(sent_message.message_id)
+    context.user_data["rag_storage"][storage_id] = {
+        "detailed_info": f"{RLM}" + detailed_info.replace("\n", f"\n{RLM}"),
+        "retrieved_context": f"{RLM}" + retrieved_context.replace("\n", f"\n{RLM}")
+    }
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles button clicks."""
     query = update.callback_query
+    if not query:
+        return
+        
     await query.answer()
     
     RLM = "\u200f"
-
+    message_id = str(query.message.message_id)
+    
+    # Retrieve data for this specific message
+    storage = context.user_data.get("rag_storage", {}).get(message_id, {})
+    
     if query.data == "show_more":
-        detailed_info = context.user_data.get("last_detail", "متأسفانه جزئیات بیشتری در دسترس نیست.")
+        detailed_info = storage.get("detailed_info", "متأسفانه جزئیات بیشتری در دسترس نیست.")
         
         # After showing details, offer the "References" button
         keyboard = [[InlineKeyboardButton("منابع 📚", callback_data="show_refs")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.edit_message_text(
-            text=f"{query.message.text}\n\n{RLM}**جزئیات بیشتر:**\n{detailed_info}",
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
+        new_text = f"{query.message.text}\n\n{RLM}**جزئیات بیشتر:**\n{detailed_info}"
+        
+        try:
+            await query.edit_message_text(
+                text=new_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Error editing message for show_more: {e}")
+            # Fallback: if too long, just show the detailed info without original text
+            await query.edit_message_text(
+                text=f"{RLM}**جزئیات بیشتر:**\n{detailed_info}",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
     
     elif query.data == "show_refs":
-        context_data = context.user_data.get("last_context", "متأسفانه منابعی یافت نشد.")
+        context_data = storage.get("retrieved_context", "متأسفانه منابعی یافت نشد.")
         
-        await query.edit_message_text(
-            text=f"{query.message.text}\n\n{RLM}**منابع و تاریخچه‌ی گفتگوها:**\n{context_data}",
-            parse_mode="Markdown",
-            reply_markup=None # Final step, remove buttons
-        )
+        # We replace the text entirely for references to avoid character limits
+        ref_text = f"{RLM}**منابع و تاریخچه‌ی گفتگوها:**\n\n{context_data}"
+        
+        try:
+            await query.edit_message_text(
+                text=ref_text,
+                parse_mode="Markdown",
+                reply_markup=None # Final step, remove buttons
+            )
+        except Exception as e:
+            logger.error(f"Error editing message for show_refs: {e}")
+            # Final fallback: extreme truncation
+            await query.edit_message_text(
+                text=f"{RLM}**منابع (بسیار کوتاه شده):**\n\n{context_data[:1000]}...",
+                parse_mode="Markdown",
+                reply_markup=None
+            )
 
 def main():
     """Starts the bot using Polling."""
@@ -141,3 +171,6 @@ def main():
     
     logger.info("Bot is starting polling...")
     application.run_polling()
+
+if __name__ == "__main__":
+    main()

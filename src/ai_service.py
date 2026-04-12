@@ -30,6 +30,15 @@ logger.addHandler(info_handler)
 logger.addHandler(error_handler)
 logger.addHandler(logging.StreamHandler())
 
+# Dedicated RAG Logger (Centralized log of all AI interactions)
+rag_dir = "logs/rag"
+os.makedirs(rag_dir, exist_ok=True)
+rag_logger = logging.getLogger("rag_logger")
+rag_logger.setLevel(logging.INFO)
+rag_handler = RotatingFileHandler(f"{rag_dir}/rag.log", maxBytes=20*1024*1024, backupCount=10)
+rag_handler.setFormatter(logging.Formatter('%(asctime)s\n%(message)s\n' + '-'*50 + '\n'))
+rag_logger.addHandler(rag_handler)
+
 # Initialize Search Service
 # We use all cleaned data from the processed directory
 search_service = SearchService("data/processed")
@@ -41,27 +50,24 @@ GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GOOGLE_API_KEY}"
 
 def log_experiment(user_question: str, context: str, response: dict):
-    """Logs the RAG interaction into a unique file for each sample."""
-    now = datetime.now()
-    timestamp_str = now.strftime("%Y-%m-%d %H:%M:%S")
-    filename_str = now.strftime("%Y%m%d_%H%M%S")
-    
+    """Logs the RAG interaction into the centralized RAG log."""
     log_entry = (
-        f"{'='*80}\n"
-        f"TIMESTAMP: {timestamp_str}\n"
         f"USER QUESTION: {user_question}\n"
-        f"{'-'*40}\n"
         f"RETRIEVED CONTEXT:\n{context}\n"
-        f"{'-'*40}\n"
         f"AI SHORT ANSWER: {response.get('short_answer')}\n"
-        f"AI DETAILED INFO:\n{response.get('detailed_info')}\n"
-        f"{'='*80}\n"
+        f"AI DETAILED INFO:\n{response.get('detailed_info')}"
     )
+    rag_logger.info(log_entry)
     
+    # Also keep individual sample files for in-depth analysis (legacy support)
+    now = datetime.now()
+    filename_str = now.strftime("%Y%m%d_%H%M%S")
     os.makedirs("experiments", exist_ok=True)
     file_path = f"experiments/sample_{filename_str}.txt"
-    with open(file_path, "w", encoding="utf-8") as f:
-        f.write(log_entry)
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(f"TIMESTAMP: {now.strftime('%Y-%m-%d %H:%M:%S')}\n" + log_entry)
+    except: pass
 
 # System Prompt in Farsi to define Danaa's persona and RAG rules
 SYSTEM_PROMPT = (

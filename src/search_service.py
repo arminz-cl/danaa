@@ -130,7 +130,7 @@ class SearchService:
         results.sort(key=lambda x: x["score"], reverse=True)
         return [r["item"] for r in results[:top_k]]
 
-    def format_context(self, search_results: List[Dict[str, Any]], knowledge_cards: List[Dict[str, Any]] = None, max_chars_per_msg: int = 500) -> str:
+    def format_context(self, search_results: List[Dict[str, Any]], knowledge_cards: List[Dict[str, Any]] = None, max_chars_per_msg: int = 400, max_total_chars: int = 3000) -> str:
         """Formats search results and knowledge cards into a text block for the AI."""
         context_blocks = []
         
@@ -167,10 +167,13 @@ class SearchService:
             
             context_blocks.append("\n\n".join(experience_lines))
 
-        if not context_blocks:
-            return "No relevant community history or facts found."
-
-        return "\n\n".join(context_blocks)
+        full_context = "\n\n".join(context_blocks) if context_blocks else "No relevant community history or facts found."
+        
+        # Hard limit to prevent Telegram 4096 char overflow
+        if len(full_context) > max_total_chars:
+            full_context = full_context[:max_total_chars] + "\n\n... (برخی از منابع به دلیل طولانی بودن حذف شدند)"
+            
+        return full_context
 
 if __name__ == "__main__":
     # Test Search
