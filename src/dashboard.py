@@ -20,19 +20,23 @@ async def get_cards():
     """Reads both knowledge cards and raw processed chats, grouped by source."""
     grouped_data = {}
     
-    # 1. Load Distilled Knowledge Cards (if any)
+    # 1. Load Distilled Knowledge Cards (Recursively)
     if os.path.exists(KNOWLEDGE_BASE_DIR):
-        for filename in os.listdir(KNOWLEDGE_BASE_DIR):
-            if filename.endswith(".json"):
-                name = "★ " + filename.replace("_cards.json", "").replace(".json", "").replace("_", " ").title()
-                path = os.path.join(KNOWLEDGE_BASE_DIR, filename)
-                try:
-                    with open(path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        cards = data.get("cards", []) if isinstance(data, dict) else data
-                        if cards:
-                            grouped_data[name] = cards
-                except: pass
+        for root, dirs, files in os.walk(KNOWLEDGE_BASE_DIR):
+            for filename in files:
+                if filename.endswith(".json") and "_cards" in filename:
+                    # e.g. "★ Pgwp" or "★ Express"
+                    name = "★ " + filename.replace("_cards.json", "").replace(".json", "").replace("_", " ").title()
+                    path = os.path.join(root, filename)
+                    try:
+                        with open(path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            cards = data.get("cards", []) if isinstance(data, dict) else data
+                            if cards:
+                                if name not in grouped_data:
+                                    grouped_data[name] = []
+                                grouped_data[name].extend(cards)
+                    except: pass
 
     # 2. Load Raw Processed History (Most recent 100)
     if os.path.exists(PROCESSED_DIR):

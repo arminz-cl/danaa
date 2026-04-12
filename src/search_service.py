@@ -36,23 +36,23 @@ class SearchService:
         logger.info(f"Total items in knowledge base: {len(self.knowledge_base)}")
 
     def _load_cards(self):
-
-        """Loads knowledge cards from the kb_dir."""
+        """Loads knowledge cards from the kb_dir recursively."""
         if not os.path.exists(self.kb_dir):
             return
 
-        for filename in os.listdir(self.kb_dir):
-            if filename.endswith(".json"):
-                path = os.path.join(self.kb_dir, filename)
-                try:
-                    with open(path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        if isinstance(data, dict):
-                            self.knowledge_cards.extend(data.get("cards", []))
-                        elif isinstance(data, list):
-                            self.knowledge_cards.extend(data)
-                except Exception as e:
-                    logger.error(f"Error loading cards from {path}: {e}")
+        for root, dirs, files in os.walk(self.kb_dir):
+            for filename in files:
+                if filename.endswith(".json") and "_cards" in filename:
+                    path = os.path.join(root, filename)
+                    try:
+                        with open(path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            if isinstance(data, dict):
+                                self.knowledge_cards.extend(data.get("cards", []))
+                            elif isinstance(data, list):
+                                self.knowledge_cards.extend(data)
+                    except Exception as e:
+                        logger.error(f"Error loading cards from {path}: {e}")
         logger.info(f"Loaded {len(self.knowledge_cards)} knowledge cards.")
 
     def _calculate_relevance(self, text: str, query_words: List[str]) -> float:

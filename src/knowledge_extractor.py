@@ -2,11 +2,13 @@ import os
 import json
 import logging
 import asyncio
+from datetime import datetime
 from typing import List, Dict, Any
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv()
+# Force override to ensure the key from .env is used
+load_dotenv(override=True)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -91,8 +93,8 @@ class KnowledgeExtractor:
             
         return chunks
 
-    async def process_file(self, input_path: str, output_path: str, max_tokens: int = 100000):
-        """Processes the *last* part of the file and saves results with metadata."""
+    async def process_file(self, input_path: str, base_output_dir: str, start_date: str = "2026-01-01", end_date: str = "2026-12-31"):
+        """Processes messages day-by-day within a date range (newest first)."""
         if not os.path.exists(input_path):
             logger.error(f"Input file not found: {input_path}")
             return
@@ -100,75 +102,108 @@ class KnowledgeExtractor:
         with open(input_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
-        chars_limit = max_tokens * 3.5
-        subset = []
-        current_chars = 0
+        # Filter for messages within the specified date range
+        subset = [
+            item for item in data 
+            if item.get("timestamp", "")[:10] >= start_date 
+            and item.get("timestamp", "")[:10] <= end_date
+        ]
         
-        for item in reversed(data):
-            item_str = json.dumps(item, ensure_ascii=False)
-            current_chars += len(item_str)
-            if current_chars > chars_limit:
-                break
-            subset.append(item)
-        
-        subset.reverse()
         if not subset:
+            logger.warning(f"No messages found between {start_date} and {end_date} in {input_path}")
             return
 
-        earliest_timestamp = subset[0].get("timestamp", "unknown")
-        logger.info(f"Processing {len(subset)} items from {input_path} (Starting from {earliest_timestamp})...")
-        
-        chunks = self._prepare_chunks(subset)
-        all_cards = []
-        
-        for i, chunk in enumerate(chunks):
-            logger.info(f"Extracting chunk {i+1}/{len(chunks)}...")
-            cards = await self.extract_from_text(chunk)
-            
-            if cards:
-                for card in cards:
-                    card["source_file"] = os.path.basename(input_path)
-                all_cards.extend(cards)
-            
-            # Gemini is fast and has high limits, so we only need a tiny delay
-            await asyncio.sleep(1)
+        # Group by day (YYYY-MM-DD)
+        days_data = {}
+        for item in subset:
+            day = item.get("timestamp", "")[:10] # YYYY-MM-DD
+            if day not in days_data:
+                days_data[day] = []
+            days_data[day].append(item)
 
-        output_data = {
-            "metadata": {
-                "source": input_path,
-                "earliest_processed_message": earliest_timestamp,
-                "extraction_date": "2026-04-11",
-                "token_limit": max_tokens,
-                "model": self.model
-            },
-            "cards": all_cards
-        }
+        # Sort days in REVERSE order (newest first)
+        sorted_days = sorted(days_data.keys(), reverse=True)
+        logger.info(f"Found {len(sorted_days)} days of data between {start_date} and {end_date} in {input_path}")
         
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(output_data, f, ensure_ascii=False, indent=2)
-        
-        logger.info(f"Saved {len(all_cards)} cards to {output_path}")
+        group_name = os.path.basename(input_path).split('_')[0] # e.g. pgwp or express
+
+        for day_str in sorted_days:
+            # Create folder structure YYYY/MM/DD
+            year, month, day = day_str.split('-')
+            day_dir = os.path.join(base_output_dir, year, month, day)
+            day_file = os.path.join(day_dir, f"{group_name}_cards.json")
+
+            # SKIP IF ALREADY DONE (Resume functionality)
+            if os.path.exists(day_file):
+                logger.info(f"Skipping {day_str} for {group_name} (Already processed)")
+                continue
+
+            day_items = days_data[day_str]
+            logger.info(f"Processing {day_str} ({len(day_items)} items) for {group_name}...")
+            
+            chunks = self._prepare_chunks(day_items)
+            day_cards = []
+            
+            for i, chunk in enumerate(chunks):
+                logger.info(f"  -> Extracting chunk {i+1}/{len(chunks)} for {day_str}...")
+                cards = await self.extract_from_text(chunk)
+                
+                if cards:
+                    for card in cards:
+                        card["source_file"] = os.path.basename(input_path)
+                        card["extracted_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        card["message_date"] = day_str
+                    day_cards.extend(cards)
+                
+                # Respect 15 RPM limit
+                await asyncio.sleep(4)
+
+            # Save this day's work
+            if day_cards:
+                os.makedirs(day_dir, exist_ok=True)
+                output_data = {
+                    "metadata": {
+                        "source": input_path,
+                        "date": day_str,
+                        "extraction_date": datetime.now().strftime("%Y-%m-%d"),
+                        "model": self.model,
+                        "total_cards": len(day_cards)
+                    },
+                    "cards": day_cards
+                }
+                with open(day_file, 'w', encoding='utf-8') as f:
+                    json.dump(output_data, f, ensure_ascii=False, indent=2)
+                logger.info(f"  => Saved {len(day_cards)} cards for {day_str}")
 
 async def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Extract knowledge cards from chat history.")
+    parser.add_argument("--start", type=str, default="2026-01-01", help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--end", type=str, default="2026-12-31", help="End date (YYYY-MM-DD)")
+    args = parser.parse_args()
+
     extractor = KnowledgeExtractor()
     
-    # Process both files with 100k tokens each (FREEDOM!)
-    tasks = [
-        extractor.process_file(
-            "data/processed/pgwp_cleaned_20260411.json", 
-            "data/knowledge_base/pgwp_cards.json",
-            max_tokens=100000
-        ),
-        extractor.process_file(
-            "data/processed/express_entry_20260411_cleaned.json", 
-            "data/knowledge_base/express_entry_cards.json",
-            max_tokens=100000
-        )
-    ]
+    # Base dir for knowledge base
+    kb_dir = "data/knowledge_base"
+
+    # Process range for both files
+    logger.info(f"Starting distillation from {args.start} to {args.end}")
     
-    for task in tasks:
-        await task
+    await extractor.process_file(
+        "data/processed/pgwp_cleaned_20260411.json", 
+        kb_dir,
+        start_date=args.start,
+        end_date=args.end
+    )
+    
+    await extractor.process_file(
+        "data/processed/express_entry_20260411_cleaned.json", 
+        kb_dir,
+        start_date=args.start,
+        end_date=args.end
+    )
 
 if __name__ == "__main__":
+    from datetime import datetime
     asyncio.run(main())
