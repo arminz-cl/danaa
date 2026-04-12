@@ -19,24 +19,36 @@ KNOWLEDGE_BASE_DIR = "data/knowledge_base"
 async def get_cards():
     """Reads both knowledge cards and raw processed chats, grouped by source."""
     grouped_data = {}
+    total_kb_cards = 0
     
     # 1. Load Distilled Knowledge Cards (Recursively)
     if os.path.exists(KNOWLEDGE_BASE_DIR):
         for root, dirs, files in os.walk(KNOWLEDGE_BASE_DIR):
             for filename in files:
                 if filename.endswith(".json") and "_cards" in filename:
-                    # e.g. "★ Pgwp" or "★ Express"
-                    name = "★ " + filename.replace("_cards.json", "").replace(".json", "").replace("_", " ").title()
+                    # e.g. "pgwp_cards.json" -> "pgwp"
+                    prefix = filename.split('_')[0]
+                    name = "★ " + prefix.title()
                     path = os.path.join(root, filename)
+                    
                     try:
                         with open(path, 'r', encoding='utf-8') as f:
                             data = json.load(f)
-                            cards = data.get("cards", []) if isinstance(data, dict) else data
+                            # Handle both list and dict with "cards" key
+                            cards = []
+                            if isinstance(data, dict):
+                                cards = data.get("cards", [])
+                            elif isinstance(data, list):
+                                cards = data
+                                
                             if cards:
+                                total_kb_cards += len(cards)
                                 if name not in grouped_data:
                                     grouped_data[name] = []
                                 grouped_data[name].extend(cards)
-                    except: pass
+                                logger.info(f"Loaded {len(cards)} cards from {path} into {name}")
+                    except Exception as e:
+                        logger.error(f"Error reading {path}: {e}")
 
     # 2. Load Raw Processed History (Most recent 100)
     if os.path.exists(PROCESSED_DIR):
@@ -66,7 +78,11 @@ async def get_cards():
                         grouped_data[name] = snippets
                 except: pass
                 
-    return grouped_data
+    logger.info(f"Dashboard serving {total_kb_cards} cards total across {len(grouped_data)} groups.")
+    return {
+        "metadata": {"total_cards": total_kb_cards},
+        "data": grouped_data
+    }
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard_home(request: Request):
@@ -108,14 +124,25 @@ async def dashboard_home(request: Request):
                 border-radius: 12px;
                 box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
             }
-            .title h1 { margin: 0; font-size: 24px; color: #0f172a; }
+            .title h1 { margin: 0; font-size: 24px; color: #0f172a; display: flex; align-items: center; gap: 10px; }
             .title p { margin: 5px 0 0; color: var(--text-muted); font-size: 14px; }
             
+            .card-counter {
+                background: var(--primary);
+                color: white;
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 14px;
+                font-weight: 800;
+            }
+
             .tabs {
                 display: flex;
                 gap: 10px;
                 margin-bottom: 20px;
                 border-bottom: 2px solid #e2e8f0;
+                padding-bottom: 10px;
+                overflow-x: auto;
                 padding-bottom: 10px;
             }
             .tab-btn {
@@ -127,6 +154,7 @@ async def dashboard_home(request: Request):
                 cursor: pointer;
                 border-radius: 8px;
                 transition: all 0.2s;
+                white-space: nowrap;
             }
             .tab-btn:hover { background: #e2e8f0; }
             .tab-btn.active {
@@ -206,7 +234,7 @@ async def dashboard_home(request: Request):
         <div class="container">
             <div class="header">
                 <div class="title">
-                    <h1>Dana Knowledge Dashboard</h1>
+                    <h1>Dana Knowledge Dashboard <span id="card-count" class="card-counter">0</span></h1>
                     <p>Distilled Facts from Iranian Canadian Community</p>
                 </div>
                 <div id="status">LIVE</div>
@@ -228,7 +256,11 @@ async def dashboard_home(request: Request):
             async function fetchData() {
                 try {
                     const response = await fetch('/api/cards');
-                    const newData = await response.json();
+                    const json = await response.json();
+                    const newData = json.data;
+                    const metadata = json.metadata;
+
+                    document.getElementById('card-count').innerText = metadata.total_cards;
                     
                     if (JSON.stringify(newData) === JSON.stringify(allData)) return;
                     allData = newData;

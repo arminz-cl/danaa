@@ -10,8 +10,20 @@ from dotenv import load_dotenv
 # Force override to ensure the key from .env is used
 load_dotenv(override=True)
 
+# Create logs directory if it doesn't exist
+if not os.path.exists("logs"):
+    os.makedirs("logs")
+
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+log_filename = "logs/extractor.log"
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 class KnowledgeExtractor:
@@ -41,7 +53,7 @@ class KnowledgeExtractor:
         """Sends a chunk of text to Gemini to extract knowledge cards."""
         if not self.api_key:
             logger.error("GOOGLE_API_KEY not found in .env")
-            return []
+            return None
 
         # Standard payload for Gemini 2.5 Flash v1beta (Proven via terminal)
         payload = {
@@ -59,7 +71,7 @@ class KnowledgeExtractor:
                 
                 if response.status_code != 200:
                     logger.error(f"Gemini API Error: {response.text}")
-                    return []
+                    return None
                 
                 result = response.json()
                 content_text = result['candidates'][0]['content']['parts'][0]['text']
@@ -70,11 +82,11 @@ class KnowledgeExtractor:
                     return data.get("cards", data if isinstance(data, list) else [])
                 except json.JSONDecodeError:
                     logger.error(f"Failed to parse AI response as JSON: {content_text[:100]}...")
-                    return []
+                    return None # Critical parsing error
 
             except Exception as e:
                 logger.error(f"Error during extraction: {e}")
-                return []
+                return None
 
     def _prepare_chunks(self, data: List[Dict[str, Any]], chunk_size: int = 25) -> List[str]:
         """Groups raw data into text chunks for the LLM."""
@@ -152,39 +164,52 @@ class KnowledgeExtractor:
             chunks = self._prepare_chunks(day_items)
             day_cards = []
             
+            any_success = False
             for i, chunk in enumerate(chunks):
                 logger.info(f"  -> Extracting chunk {i+1}/{len(chunks)} for {day_str}...")
                 cards = await self.extract_from_text(chunk)
                 
-                if cards:
+                # Check for API error (extract_from_text returns [] but could be error)
+                # We need to distinguish between 'no cards' and 'error'
+                # Let's assume if it returns cards or it was a 200 OK we continue.
+                # Actually, the logic is: if any chunk in a day triggers an error, 
+                # we shouldn't mark the whole day as 'done'.
+                
+                if cards is not None: # We need to update extract_from_text to return None on error
+                    any_success = True
                     for card in cards:
                         card["source_file"] = os.path.basename(input_path)
                         card["extracted_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         card["message_date"] = day_str
                     day_cards.extend(cards)
+                else:
+                    logger.error(f"  !! Skipping save for {day_str} due to extraction failure.")
+                    any_success = False
+                    break
                 
                 # Respect 15 RPM limit (using 10s to be extra safe with free tier)
                 await asyncio.sleep(10)
 
-            # Save this day's work
-            os.makedirs(day_dir, exist_ok=True)
-            output_data = {
-                "metadata": {
-                    "source": input_path,
-                    "date": day_str,
-                    "extraction_date": datetime.now().strftime("%Y-%m-%d"),
-                    "model": self.model,
-                    "total_cards": len(day_cards)
-                },
-                "cards": day_cards
-            }
-            with open(day_file, 'w', encoding='utf-8') as f:
-                json.dump(output_data, f, ensure_ascii=False, indent=2)
-            
-            if day_cards:
-                logger.info(f"  => Saved {len(day_cards)} cards for {day_str}")
-            else:
-                logger.info(f"  => No cards found for {day_str}, saved empty result to skip in future.")
+            # Save this day's work ONLY if we successfully reached the API for all chunks
+            if any_success:
+                os.makedirs(day_dir, exist_ok=True)
+                output_data = {
+                    "metadata": {
+                        "source": input_path,
+                        "date": day_str,
+                        "extraction_date": datetime.now().strftime("%Y-%m-%d"),
+                        "model": self.model,
+                        "total_cards": len(day_cards)
+                    },
+                    "cards": day_cards
+                }
+                with open(day_file, 'w', encoding='utf-8') as f:
+                    json.dump(output_data, f, ensure_ascii=False, indent=2)
+                
+                if day_cards:
+                    logger.info(f"  => Saved {len(day_cards)} cards for {day_str}")
+                else:
+                    logger.info(f"  => No cards found for {day_str}, saved empty result to skip in future.")
 
 async def main():
     import argparse
